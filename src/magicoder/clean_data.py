@@ -170,34 +170,60 @@ def save_analysis(chosen_data: list[dict], rejected_data: list[dict], output_dir
 
 
 def main():
+    # 解析命令行参数
     args = cast(Args, HfArgumentParser(Args).parse_args_into_dataclasses()[0])
+
+    # 如果指定了分析目录且未禁用过滤，则创建该目录
     if args.analysis_dir is not None and not args.no_filter:
         Path(args.analysis_dir).mkdir(exist_ok=False, parents=False)
+
+    # 初始化原始数据列表
     raw_data: list[dict] = []
+
+    # 遍历数据文件
     for data_file in args.data_files:
+        # 读取JSONL格式的数据文件
         data = read_jsonl(Path(data_file))
-        language = data_file.split("-")[1]
+        # 从文件名中提取语言信息 TODO 直接就是Java
+        # language = data_file.split("-")[1]
+        language = "java"
+        # 断言语言在已知语言列表中
         assert language in ALL_LANGS, f"Unknown language {language}"
+        # 将读取的数据添加到原始数据列表中，并添加语言信息
         raw_data.extend(dict(lang=language, **d) for d in data)
+
+    # 设置随机种子并打乱原始数据列表
     random.seed(args.seed)
     random.shuffle(raw_data)
 
+    # 如果禁用了过滤，则仅随机打乱数据顺序并写入输出文件
     if args.no_filter:
         print("No filtering, just randomizing the order of the data..")
         write_jsonl(Path(args.output_file), raw_data)
         return
 
+    # 初始化选中数据列表
     chosen_data = raw_data
+
+    # 执行第一个过滤步骤，过滤掉问题和解决方案相同的数据
     chosen_data, rejected_data_1 = filter_same_seed_problem_solution(chosen_data)
+    # 打印过滤后的数据数量
     print(f"After filtering: {len(raw_data)} -> {(n_last := len(chosen_data))}")
 
+    # 发出警告，说明过滤问题和解决方案相同的数据在实际中帮助不大
     warnings.warn(
         "In practice, filtering data whose solution copies the problem does not help much."
         "So we disabled it. But this conclusion remains to be verified."
     )
+
+    # 注释掉第二个过滤步骤，因为已经禁用了相关过滤
     # chosen_data, rejected_data_2 = filter_same_codeblocks(chosen_data)
     # print(f"After filtering: {n_last} -> {(n_last := len(chosen_data))}")
+
+    # 将过滤后的数据写入输出文件
     write_jsonl(Path(args.output_file), chosen_data)
+
+    # 如果指定了分析目录，则保存分析数据
     if args.analysis_dir is not None:
         print("Saving analysis..")
         save_analysis(

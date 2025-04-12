@@ -157,6 +157,7 @@ def train():
     )
     msg = f"#Examples truncated: {sum(train_dataset['exceeding_length'])} / {len(train_dataset)}"
     print(msg)
+    print(f"the sum of train dataset is:{str(len(dataset))}")
     # else:
     #     train_dataset = dataset
 
@@ -185,16 +186,35 @@ def train():
     print("Parallel mode:", training_args.parallel_mode)
     data_collator = get_data_collator(args, state.tokenization_context.pad_token_id)
 
+    from transformers import TrainerCallback
+    class SaveCheckpointCallback(TrainerCallback):
+        def __init__(self, trainer):
+            # 在初始化时保存 trainer 对象
+            self.trainer = trainer
+
+        def on_epoch_end(self, args, state, control, **kwargs):
+            output_dir = f"{args.output_dir}/checkpoint-epoch-{state.epoch:.0f}"
+            # 使用保存的 trainer 对象调用 save_model 方法
+            self.trainer.save_model(output_dir)
+            print(f"Checkpoint saved at {output_dir}")
+
+    # 假设 state, training_args, train_dataset, eval_dataset, data_collator 已经定义
     # neftune_noise_alpha
     trainer = Trainer(
         model=state.model,
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
-        data_collator=data_collator,
+        data_collator=data_collator
         # eval_dataset=small_eval_dataset,
         # compute_metrics=compute_metrics,
     )
+
+    # 创建回调实例，此时 trainer 已经定义好
+    callback = SaveCheckpointCallback(trainer)
+
+    # 将回调实例添加到 trainer 的 callbacks 参数中
+    trainer.add_callback(callback)
 
     # NOTE: the checkpoint will override the initialized model
     trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
